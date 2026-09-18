@@ -1,4 +1,50 @@
 <!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Test</title>
+</head>
+<body style="background:#0b1220;color:#fff;font-family:sans-serif;padding:30px">
+<div id="root">Step 1: HTML loaded...</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1",
+    "htm": "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
+
+<script type="module">
+document.getElementById('root').textContent = 'Step 2: Module started...'
+
+try {
+  const React = (await import('react')).default
+  document.getElementById('root').textContent = 'Step 3: React loaded...'
+
+  const { createRoot } = await import('react-dom/client')
+  const htm = (await import('htm')).default
+  const html = htm.bind(React.createElement)
+
+  document.getElementById('root').textContent = 'Step 4: All libraries loaded, rendering...'
+
+  createRoot(document.getElementById('root')).render(
+    html`<div>
+      <h1 style="color:#3ddc97">✅ App is working!</h1>
+      <p>React, ReactDOM, and htm loaded successfully.</p>
+      <p>If you see this, the environment is fine and we can rebuild the full app.</p>
+    </div>`
+  )
+} catch (e) {
+  document.getElementById('root').innerHTML =
+    '<pre style="color:#ff5c5c;font-size:14px;white-space:pre-wrap">ERROR:\n' +
+    e.message + '\n\n' + e.stack + '</pre>'
+}
+</script>
+</body>
+</html><!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
