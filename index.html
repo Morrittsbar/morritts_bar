@@ -559,4 +559,115 @@ function ParLevels({ toast }) {
   const [q, setQ] = useState('')
   async function load() {
     if (!sb) return
-    const [b
+    const [b,p,pl] = await Promise.all([
+      sb.from('locations').select('*').eq('kind','bar').order('name'),
+      sb.from('products').select('id,name,unit').eq('active',true).order('name'),
+      sb.from('par_levels').select('*')
+    ])
+    setBars(b.data||[]); setProducts(p.data||[])
+    const m = {}
+    ;(pl.data||[]).forEach(r => { m[r.product_id + '|' + r.location_id] = r.par_qty })
+    setParMap(m); setDirty({})
+  }
+  useEffect(() => { load() }, [])
+  function setVal(pid, lid, v) {
+    const k = pid + '|' + lid
+    setParMap({...parMap, [k]: v})
+    setDirty({...dirty, [k]: true})
+  }
+  async function save() {
+    const updates = Object.keys(dirty).map(k => {
+      const parts = k.split('|')
+      return { product_id: Number(parts[0]), location_id: Number(parts[1]), par_qty: Number(parMap[k])||0 }
+    })
+    if (updates.length === 0) return toast('No changes')
+    setBusy(true)
+    const { error } = await sb.from('par_levels').upsert(updates, { onConflict: 'product_id,location_id' })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    toast('Saved ' + updates.length + ' changes')
+    setDirty({})
+  }
+  const filtered = q ? products.filter(p => p.name.toLowerCase().includes(q.toLowerCase())) : products
+  return html`
+    <div class="card">
+      <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <input style="max-width:240px" placeholder="Search products" value=${q} onInput=${e=>setQ(e.target.value)} />
+        <div style="flex:1"></div>
+        <button class="primary" onClick=${save} disabled=${busy||Object.keys(dirty).length===0}>
+          ${busy?'Saving…':'Save (' + Object.keys(dirty).length + ')'}
+        </button>
+      </div>
+      <div class="scroll" style="max-height:600px">
+        <table>
+          <thead><tr><th>Product</th>${bars.map(b => html`<th key=${b.id} class="num">${b.name}</th>`)}</tr></thead>
+          <tbody>
+            ${filtered.map(p => html`
+              <tr key=${p.id}>
+                <td>${p.name}<div class="mut" style="font-size:11px">${p.unit}</div></td>
+                ${bars.map(b => {
+                  const k = p.id + '|' + b.id
+                  return html`<td key=${b.id} class="num">
+                    <input type="number" min="0" style="max-width:80px;text-align:right" value=${parMap[k] ?? ''} onInput=${e => setVal(p.id,b.id,e.target.value)} />
+                  </td>`
+                })}
+              </tr>`)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `
+}
+
+// === History ===
+function OrderHistory() {
+  const [rows, setRows] = useState([])
+  const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate()-30); return d.toISOString().slice(0,10) })
+  const [to, setTo] = useState(today())
+  useEffect(() => {
+    if (!sb) return
+    sb.from('orders').select('*, locations:bar_id(name), order_lines(qty_requested,qty_issued,products(name))')
+      .gte('order_date', from).lte('order_date', to).order('order_date',{ascending:false})
+      .then(({ data }) => setRows(data||[]))
+  }, [from, to])
+  return html`
+    <div class="card">
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <input type="date" value=${from} onInput=${e=>setFrom(e.target.value)} />
+        <input type="date" value=${to} onInput=${e=>setTo(e.target.value)} />
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Date</th><th>Bar</th><th>Status</th><th class="num">Lines</th><th class="num">Total qty</th></tr></thead>
+          <tbody>
+            ${rows.map(o => {
+              const ls = o.order_lines || []
+              const total = ls.reduce((a,b) => a + Number(b.qty_requested||0), 0)
+              return html`
+                <tr key=${o.id}>
+                  <td>${o.order_date}</td>
+                  <td>${o.locations?.name || '—'}</td>
+                  <td><span class="pill ${o.status==='issued'?'p-good':o.status==='pending'?'p-warn':'p-bad'}">${o.status}</span></td>
+                  <td class="num">${ls.length}</td>
+                  <td class="num">${NUM(total)}</td>
+                </tr>`
+            })}
+            ${rows.length===0 && html`<tr><td colspan="5" class="mut" style="text-align:center;padding:20px">No orders in range</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `
+}
+
+// === Mount ===
+try {
+  createRoot(document.getElementById('root')).render(html`<${App} />`)
+} catch (e) {
+  document.getElementById('root').innerHTML =
+    '<pre style="color:#ff5c5c;padding:20px;white-space:pre-wrap">Render error:\n' +
+    e.message + '\n\n' + e.stack + '</pre>'
+}
+</script>
+</body>
+</html>
