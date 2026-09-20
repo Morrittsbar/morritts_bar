@@ -59,15 +59,28 @@ td{padding:8px;border-bottom:1px solid #22304a55}
 <script type="module">
 // === Library loading ===
 let React, createRoot, htm, createClient
+const TIMEOUT_MS = 15000
+
+function withTimeout(promise, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout loading ' + label)), TIMEOUT_MS))
+  ])
+}
+
 try {
-  React = (await import('https://esm.sh/react@18.3.1')).default
-  createRoot = (await import('https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1')).createRoot
-  htm = (await import('https://esm.sh/htm@3.1.1')).default
-  createClient = (await import('https://esm.sh/@supabase/supabase-js@2.45.4')).createClient
+  React = (await withTimeout(import('https://esm.sh/react@18.3.1'), 'React')).default
+  createRoot = (await withTimeout(import('https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1'), 'ReactDOM')).createRoot
+  htm = (await withTimeout(import('https://esm.sh/htm@3.1.1'), 'htm')).default
+  createClient = (await withTimeout(import('https://esm.sh/@supabase/supabase-js@2.45.4'), 'Supabase')).createClient
 } catch (e) {
   document.getElementById('root').innerHTML =
-    '<pre style="color:#ff5c5c;padding:20px;white-space:pre-wrap">Failed to load libraries:\n' +
-    e.message + '\n\n' + e.stack + '</pre>'
+    '<div style="padding:24px;font-family:sans-serif;color:#ff5c5c;background:#0b1220;min-height:100vh">' +
+    '<h2>Failed to load app libraries</h2>' +
+    '<p>Error: ' + e.message + '</p>' +
+    '<p style="color:#8ea2c0;font-size:14px">This usually means the CDN is blocked on your network. Try a different network or incognito mode.</p>' +
+    '<pre style="color:#8ea2c0;font-size:12px;white-space:pre-wrap;margin-top:16px">' + e.stack + '</pre>' +
+    '</div>'
   throw e
 }
 
