@@ -59,27 +59,26 @@ td{padding:8px;border-bottom:1px solid #22304a55}
 <script type="module">
 // === Library loading ===
 let React, createRoot, htm, createClient
-const TIMEOUT_MS = 15000
 
-function withTimeout(promise, label) {
+function loadTimeout(promise, label) {
   return Promise.race([
     promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout loading ' + label)), TIMEOUT_MS))
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: ' + label)), 12000))
   ])
 }
 
 try {
-  React = (await withTimeout(import('https://esm.sh/react@18.3.1'), 'React')).default
-  createRoot = (await withTimeout(import('https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1'), 'ReactDOM')).createRoot
-  htm = (await withTimeout(import('https://esm.sh/htm@3.1.1'), 'htm')).default
-  createClient = (await withTimeout(import('https://esm.sh/@supabase/supabase-js@2.45.4'), 'Supabase')).createClient
+  React = (await loadTimeout(import('https://cdn.jsdelivr.net/npm/react@18.3.1/+esm'), 'React')).default
+  createRoot = (await loadTimeout(import('https://cdn.jsdelivr.net/npm/react-dom@18.3.1/client/+esm'), 'ReactDOM')).createRoot
+  htm = (await loadTimeout(import('https://cdn.jsdelivr.net/npm/htm@3.1.1/+esm'), 'htm')).default
+  createClient = (await loadTimeout(import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm'), 'Supabase')).createClient
 } catch (e) {
-  document.getElementById('root').innerHTML =
-    '<div style="padding:24px;font-family:sans-serif;color:#ff5c5c;background:#0b1220;min-height:100vh">' +
-    '<h2>Failed to load app libraries</h2>' +
-    '<p>Error: ' + e.message + '</p>' +
-    '<p style="color:#8ea2c0;font-size:14px">This usually means the CDN is blocked on your network. Try a different network or incognito mode.</p>' +
-    '<pre style="color:#8ea2c0;font-size:12px;white-space:pre-wrap;margin-top:16px">' + e.stack + '</pre>' +
+  document.body.innerHTML =
+    '<div style="padding:24px;font-family:sans-serif;background:#0b1220;color:#ff5c5c;min-height:100vh">' +
+    '<h2>Library failed to load</h2>' +
+    '<p><b>' + e.message + '</b></p>' +
+    '<p style="color:#8ea2c0;font-size:14px">Try: (1) incognito mode, (2) mobile data instead of Wi-Fi, or (3) a different browser.</p>' +
+    '<pre style="color:#8ea2c0;font-size:11px;white-space:pre-wrap;margin-top:12px">' + (e.stack || '') + '</pre>' +
     '</div>'
   throw e
 }
