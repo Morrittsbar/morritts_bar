@@ -2,10 +2,56 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Library Test</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Morritt's Bar Control</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0b1220;color:#e6edf7;min-height:100vh}
+.wrap{max-width:1200px;margin:0 auto;padding:16px}
+h1{margin:0 0 4px;font-size:22px}
+h1 span{color:#3ddc97}
+.sub{color:#8ea2c0;font-size:12.5px;margin-bottom:16px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;background:#121c2e;padding:6px;border-radius:999px;border:1px solid #22304a;margin-bottom:16px}
+.tab{padding:8px 14px;border-radius:999px;cursor:pointer;font-size:13px;color:#8ea2c0;border:0;background:transparent;font-weight:600}
+.tab.on{background:#3ddc97;color:#062015}
+.card{background:#121c2e;border:1px solid #22304a;border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 12px;font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#8ea2c0}
+.row{display:grid;gap:10px;grid-template-columns:repeat(3,1fr);margin-bottom:12px}
+@media(max-width:700px){.row{grid-template-columns:1fr}}
+label{display:block;font-size:12px;color:#8ea2c0;margin-bottom:5px}
+input,select,textarea{width:100%;padding:9px 11px;background:#0c1524;border:1px solid #22304a;color:#e6edf7;border-radius:8px;font-size:14px;font-family:inherit}
+input:focus,select:focus{outline:none;border-color:#4aa8ff}
+button{padding:9px 16px;border-radius:8px;border:1px solid #22304a;background:#18243a;color:#e6edf7;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+button.primary{background:#3ddc97;color:#062015;border:0}
+button:disabled{opacity:.5;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:#8ea2c0;font-size:11px;text-transform:uppercase;padding:8px;border-bottom:1px solid #22304a;background:#101a2b;position:sticky;top:0}
+td{padding:8px;border-bottom:1px solid #22304a55}
+.scroll{max-height:520px;overflow:auto;border:1px solid #22304a;border-radius:10px}
+.num{text-align:right}
+.mut{color:#8ea2c0}
+.toast{position:fixed;right:16px;bottom:16px;background:#18243a;border-left:4px solid #3ddc97;padding:12px 16px;border-radius:8px;font-size:13px;z-index:100;box-shadow:0 10px 30px #000a}
+.toast.err{border-left-color:#ff5c5c}
+.overlay{position:fixed;inset:0;background:#04080fcc;display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal{background:#121c2e;border:1px solid #22304a;border-radius:14px;padding:22px;max-width:420px;width:100%}
+.pill{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.p-good{background:#3ddc9722;color:#3ddc97}
+.p-warn{background:#ffb02022;color:#ffb020}
+.p-bad{background:#ff5c5c22;color:#ff5c5c}
+.p-info{background:#4aa8ff22;color:#4aa8ff}
+.loading{padding:30px;text-align:center;color:#8ea2c0;font-size:14px}
+.g3{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:14px}
+.flexrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.flex-spacer{flex:1}
+.header-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.invoice-line{display:grid;grid-template-columns:2fr 1fr 1fr 40px;gap:8px;margin-bottom:8px}
+.pill-row{margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.totals{font-size:22px;font-weight:800}
+.btn-icon{padding:4px 8px}
+</style>
 </head>
-<body style="background:#0b1220;color:#fff;font-family:monospace;padding:30px;font-size:18px;line-height:2">
-<div id="status">Starting...</div>
+<body>
+<div id="root"><div class="loading">Loading Bar Control…</div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
@@ -13,23 +59,107 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 
 <script>
-setTimeout(function() {
-  var ReactOK    = typeof React !== 'undefined' ? 'OK' : 'MISSING';
-  var ReactDOMOK = typeof ReactDOM !== 'undefined' ? 'OK' : 'MISSING';
-  var htmOK      = typeof htm !== 'undefined' ? 'OK' : 'MISSING';
-  var supabaseOK = typeof supabase !== 'undefined' ? 'OK' : 'MISSING';
+(function checkReady(){
+  if (typeof React === 'undefined' || typeof ReactDOM === 'undefined' || typeof htm === 'undefined' || typeof supabase === 'undefined') {
+    setTimeout(checkReady, 100);
+    return;
+  }
+  boot();
+})();
 
-  var allOK = ReactOK === 'OK' && ReactDOMOK === 'OK' && htmOK === 'OK' && supabaseOK === 'OK';
+function boot() {
+  const html = htm.bind(React.createElement)
+  const { useState, useEffect, useMemo, Fragment } = React
+  const { createRoot } = ReactDOM
 
-  document.getElementById('status').innerHTML =
-    '<h2 style="color:' + (allOK ? '#3ddc97' : '#ff5c5c') + '">' +
-    (allOK ? '✅ ALL LIBRARIES LOADED' : '❌ SOME LIBRARIES FAILED') +
-    '</h2>' +
-    '<div>React:    <span style="color:' + (ReactOK==='OK'?'#3ddc97':'#ff5c5c') + '">' + ReactOK + '</span></div>' +
-    '<div>ReactDOM: <span style="color:' + (ReactDOMOK==='OK'?'#3ddc97':'#ff5c5c') + '">' + ReactDOMOK + '</span></div>' +
-    '<div>htm:      <span style="color:' + (htmOK==='OK'?'#3ddc97':'#ff5c5c') + '">' + htmOK + '</span></div>' +
-    '<div>supabase: <span style="color:' + (supabaseOK==='OK'?'#3ddc97':'#ff5c5c') + '">' + supabaseOK + '</span></div>';
-}, 3000);
+  const SUPABASE_URL = 'https://ffitomemdjailggahcoh.supabase.co'
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmaXRvbWVtZGphaWxnZ2FoY29oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2MDkxMjksImV4cCI6MjEwNTE4NTEyOX0.m2weiT2gvXVzqAP-P17mPFP6YAajHpWzwJCVGuccqwI'
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true }
+  })
+
+  const today = () => new Date().toISOString().slice(0,10)
+  const NUM = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US',{maximumFractionDigits:2})
+  const KYD = n => n == null || isNaN(n) ? '—' : 'KY$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+
+  // MINIMAL APP TO PROVE IT WORKS
+  function App() {
+    const [session, setSession] = useState(null)
+    const [ready, setReady] = useState(false)
+    const [busy, setBusy] = useState(false)
+    const [email, setEmail] = useState('manager@morritts.com')
+    const [pw, setPw] = useState('Bar2026!')
+    const [err, setErr] = useState('')
+
+    useEffect(() => {
+      sb.auth.getSession().then(({ data }) => {
+        setSession(data.session)
+        setReady(true)
+      })
+      const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s))
+      return () => sub.subscription.unsubscribe()
+    }, [])
+
+    async function go(e) {
+      e.preventDefault()
+      setBusy(true); setErr('')
+      const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw })
+      setBusy(false)
+      if (error) { setErr(error.message); return }
+      setSession(data.session)
+    }
+
+    if (!ready) return html`<div class="loading">Loading…</div>`
+
+    if (!session) return html`
+      <div class="overlay">
+        <div class="modal">
+          <h1>Morritt's <span>Bar Control</span></h1>
+          <div class="sub">Sign in to continue</div>
+          ${err && html`<div style=${{background:'#ff5c5c22',color:'#ff5c5c',padding:'10px',borderRadius:'8px',marginBottom:'12px',fontSize:'13px'}}>${err}</div>`}
+          <form onSubmit=${go}>
+            <label>Email</label>
+            <input type="email" value=${email} onInput=${e => setEmail(e.target.value)} />
+            <div style=${{height:'10px'}}></div>
+            <label>Password</label>
+            <input type="password" value=${pw} onInput=${e => setPw(e.target.value)} />
+            <div style=${{marginTop:'16px'}}>
+              <button class="primary" disabled=${busy} type="submit" style=${{width:'100%'}}>
+                ${busy ? 'Signing in…' : 'Sign in'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `
+
+    return html`
+      <div class="wrap">
+        <div class="header-row">
+          <div>
+            <h1>Morritt's <span>Bar Control</span></h1>
+            <div class="sub">✅ Logged in as ${session.user.email}</div>
+          </div>
+          <div class="flex-spacer"></div>
+          <button onClick=${() => sb.auth.signOut()}>Sign out</button>
+        </div>
+        <div class="card">
+          <h2>Connection successful</h2>
+          <p style=${{color:'#3ddc97'}}>The app, Supabase, and login all work.</p>
+          <p class="mut">You can now safely add the full app UI. Reply to the assistant to continue.</p>
+        </div>
+      </div>
+    `
+  }
+
+  try {
+    createRoot(document.getElementById('root')).render(html`<${App} />`)
+  } catch (e) {
+    document.getElementById('root').innerHTML =
+      '<pre style="color:#ff5c5c;padding:20px;white-space:pre-wrap">Render error:\n' + e.message + '\n\n' + e.stack + '</pre>'
+  }
+}
 </script>
 </body>
 </html>
