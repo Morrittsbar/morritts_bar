@@ -58,108 +58,16 @@ td{padding:8px;border-bottom:1px solid #22304a55}
 <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 
+<script src="app.js"></script>
+
 <script>
-(function checkReady(){
-  if (typeof React === 'undefined' || typeof ReactDOM === 'undefined' || typeof htm === 'undefined' || typeof supabase === 'undefined') {
-    setTimeout(checkReady, 100);
+(function wait() {
+  if (typeof boot !== 'function' || typeof React === 'undefined' || typeof ReactDOM === 'undefined' || typeof htm === 'undefined' || typeof supabase === 'undefined') {
+    setTimeout(wait, 100);
     return;
   }
   boot();
 })();
-
-function boot() {
-  const html = htm.bind(React.createElement)
-  const { useState, useEffect, useMemo, Fragment } = React
-  const { createRoot } = ReactDOM
-
-  const SUPABASE_URL = 'https://ffitomemdjailggahcoh.supabase.co'
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmaXRvbWVtZGphaWxnZ2FoY29oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2MDkxMjksImV4cCI6MjEwNTE4NTEyOX0.m2weiT2gvXVzqAP-P17mPFP6YAajHpWzwJCVGuccqwI'
-
-  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true }
-  })
-
-  const today = () => new Date().toISOString().slice(0,10)
-  const NUM = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US',{maximumFractionDigits:2})
-  const KYD = n => n == null || isNaN(n) ? '—' : 'KY$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
-
-  // MINIMAL APP TO PROVE IT WORKS
-  function App() {
-    const [session, setSession] = useState(null)
-    const [ready, setReady] = useState(false)
-    const [busy, setBusy] = useState(false)
-    const [email, setEmail] = useState('manager@morritts.com')
-    const [pw, setPw] = useState('Bar2026!')
-    const [err, setErr] = useState('')
-
-    useEffect(() => {
-      sb.auth.getSession().then(({ data }) => {
-        setSession(data.session)
-        setReady(true)
-      })
-      const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s))
-      return () => sub.subscription.unsubscribe()
-    }, [])
-
-    async function go(e) {
-      e.preventDefault()
-      setBusy(true); setErr('')
-      const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw })
-      setBusy(false)
-      if (error) { setErr(error.message); return }
-      setSession(data.session)
-    }
-
-    if (!ready) return html`<div class="loading">Loading…</div>`
-
-    if (!session) return html`
-      <div class="overlay">
-        <div class="modal">
-          <h1>Morritt's <span>Bar Control</span></h1>
-          <div class="sub">Sign in to continue</div>
-          ${err && html`<div style=${{background:'#ff5c5c22',color:'#ff5c5c',padding:'10px',borderRadius:'8px',marginBottom:'12px',fontSize:'13px'}}>${err}</div>`}
-          <form onSubmit=${go}>
-            <label>Email</label>
-            <input type="email" value=${email} onInput=${e => setEmail(e.target.value)} />
-            <div style=${{height:'10px'}}></div>
-            <label>Password</label>
-            <input type="password" value=${pw} onInput=${e => setPw(e.target.value)} />
-            <div style=${{marginTop:'16px'}}>
-              <button class="primary" disabled=${busy} type="submit" style=${{width:'100%'}}>
-                ${busy ? 'Signing in…' : 'Sign in'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    `
-
-    return html`
-      <div class="wrap">
-        <div class="header-row">
-          <div>
-            <h1>Morritt's <span>Bar Control</span></h1>
-            <div class="sub">✅ Logged in as ${session.user.email}</div>
-          </div>
-          <div class="flex-spacer"></div>
-          <button onClick=${() => sb.auth.signOut()}>Sign out</button>
-        </div>
-        <div class="card">
-          <h2>Connection successful</h2>
-          <p style=${{color:'#3ddc97'}}>The app, Supabase, and login all work.</p>
-          <p class="mut">You can now safely add the full app UI. Reply to the assistant to continue.</p>
-        </div>
-      </div>
-    `
-  }
-
-  try {
-    createRoot(document.getElementById('root')).render(html`<${App} />`)
-  } catch (e) {
-    document.getElementById('root').innerHTML =
-      '<pre style="color:#ff5c5c;padding:20px;white-space:pre-wrap">Render error:\n' + e.message + '\n\n' + e.stack + '</pre>'
-  }
-}
 </script>
 </body>
 </html>
