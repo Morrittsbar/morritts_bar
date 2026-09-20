@@ -1,0 +1,23 @@
+{
+  "name": "Morritt's Bar Control",
+  "short_name": "Bar Control",
+  "description": "Bar ordering, counting and inventory for Morritt's Resort",
+  "start_url": "/morritts_bar/",
+  "scope": "/morritts_bar/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [
+    {
+      "src": "https://cdn.jsdelivr.net/gh/Morrittsbar/morritts_bar@main/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn.jsdelivr.net/gh/Morrittsbar/morritts_bar@main/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
