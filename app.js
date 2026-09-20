@@ -1,0 +1,788 @@
+// ============================================================
+// Morritt's Bar Control — Full App
+// ============================================================
+function boot() {
+  const html = htm.bind(React.createElement)
+  const { useState, useEffect, useMemo, Fragment } = React
+  const { createRoot } = ReactDOM
+
+  const SUPABASE_URL = 'https://ffitomemdjailggahcoh.supabase.co'
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmaXRvbWVtZGphaWxnZ2FoY29oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2MDkxMjksImV4cCI6MjEwNTE4NTEyOX0.m2weiT2gvXVzqAP-P17mPFP6YAajHpWzwJCVGuccqwI'
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true }
+  })
+
+  const today = () => new Date().toISOString().slice(0,10)
+  const NUM = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US',{maximumFractionDigits:2})
+  const KYD = n => n == null || isNaN(n) ? '—' : 'KY$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+
+  function App() {
+    const [session, setSession] = useState(null)
+    const [ready, setReady] = useState(false)
+    const [tab, setTab] = useState('dash')
+    const [toast, setToast] = useState(null)
+
+    function toastMsg(msg, err=false) {
+      setToast({ msg, err })
+      setTimeout(() => setToast(null), 3500)
+    }
+
+    useEffect(() => {
+      sb.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true) })
+      const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s))
+      return () => sub.subscription.unsubscribe()
+    }, [])
+
+    if (!ready) return html`<div class="loading">Loading…</div>`
+    if (!session) return html`<${Login} onSignIn=${setSession} toast=${toastMsg} />`
+
+    const isManager = ['manager@morritts.com','admin@morritts.com','sbhandari@morritts.com'].includes((session.user.email||'').toLowerCase())
+    const tabs = [
+      ['dash','Dashboard'],['order','Order'],['queue','Order Queue'],['count','Count'],
+      ['invoice','Invoices'],
+      ...(isManager ? [['counts','Count History'],['par','Par Levels'],['history','History']] : [])
+    ]
+
+    return html`
+      <div class="wrap">
+        <div class="header-row">
+          <div>
+            <h1>Morritt's <span>Bar Control</span></h1>
+            <div class="sub">${isManager ? 'Manager' : 'Bartender'} · ${session.user.email}</div>
+          </div>
+          <div class="flex-spacer"></div>
+          <button onClick=${() => sb.auth.signOut()}>Sign out</button>
+        </div>
+        <div class="tabs">
+          ${tabs.map(([k,l]) => html`<button key=${k} class="tab ${tab===k?'on':''}" onClick=${() => setTab(k)}>${l}</button>`)}
+        </div>
+        ${tab==='dash' && html`<${Dashboard} />`}
+        ${tab==='order' && html`<${OrderPage} session=${session} toast=${toastMsg} />`}
+        ${tab==='queue' && html`<${OrdersQueue} toast=${toastMsg} />`}
+        ${tab==='count' && html`<${CountPage} session=${session} toast=${toastMsg} />`}
+        ${tab==='counts' && isManager && html`<${CountHistory} toast=${toastMsg} />`}
+        ${tab==='invoice' && html`<${InvoiceUpload} session=${session} toast=${toastMsg} />`}
+        ${tab==='par' && isManager && html`<${ParLevels} toast=${toastMsg} />`}
+        ${tab==='history' && isManager && html`<${OrderHistory} />`}
+      </div>
+      ${toast && html`<div class="toast ${toast.err?'err':''}">${toast.msg}</div>`}
+    `
+  }
+
+  function Login({ onSignIn, toast }) {
+    const [email, setEmail] = useState('manager@morritts.com')
+    const [pw, setPw] = useState('')
+    const [busy, setBusy] = useState(false)
+    async function go(e) {
+      e.preventDefault()
+      setBusy(true)
+      const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw })
+      setBusy(false)
+      if (error) return toast(error.message, true)
+      onSignIn(data.session)
+    }
+    return html`
+      <div class="overlay">
+        <div class="modal">
+          <h1>Morritt's <span>Bar Control</span></h1>
+          <div class="sub">Sign in to continue</div>
+          <form onSubmit=${go}>
+            <label>Email</label>
+            <input type="email" value=${email} onInput=${e => setEmail(e.target.value)} />
+            <div style=${{height:'10px'}}></div>
+            <label>Password</label>
+            <input type="password" value=${pw} onInput=${e => setPw(e.target.value)} />
+            <div style=${{marginTop:'16px'}}>
+              <button class="primary" disabled=${busy} type="submit" style=${{width:'100%'}}>${busy?'Signing in…':'Sign in'}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `
+  }
+
+  function Dashboard() {
+    const [orders, setOrders] = useState([])
+    const [sugg, setSugg] = useState([])
+    const [loading, setLoading] = useState(true)
+    useEffect(() => {
+      Promise.all([
+        sb.from('orders').select('*, locations:bar_id(name)').order('created_at',{ascending:false}).limit(15),
+        sb.from('v_ordering_suggestions').select('*').eq('below_par', true).limit(50)
+      ]).then(([o,s]) => { setOrders(o.data || []); setSugg(s.data || []); setLoading(false) })
+    }, [])
+    const pending = orders.filter(o => o.status === 'pending').length
+    const todayCount = orders.filter(o => o.order_date === today()).length
+    return html`
+      <div>
+        <div class="g3">
+          <div class="card"><h2>Today's orders</h2><div class="totals">${todayCount}</div></div>
+          <div class="card"><h2>Pending</h2><div class="totals" style=${{color:'#ffb020'}}>${pending}</div></div>
+          <div class="card"><h2>Below par</h2><div class="totals" style=${{color:'#ffb020'}}>${sugg.length}</div></div>
+        </div>
+        <div class="card">
+          <h2>Recent orders</h2>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Date</th><th>Bar</th><th>Status</th></tr></thead>
+              <tbody>
+                ${orders.map(o => html`
+                  <tr key=${o.id}>
+                    <td>${o.order_date}</td>
+                    <td>${o.locations?.name || '—'}</td>
+                    <td><span class="pill ${o.status==='issued'?'p-good':o.status==='pending'?'p-warn':'p-bad'}">${o.status}</span></td>
+                  </tr>`)}
+                ${orders.length===0 && !loading && html`<tr><td colSpan="3" class="mut" style=${{textAlign:'center',padding:'20px'}}>No orders yet</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `
+  }
+
+  function OrderPage({ session, toast }) {
+    const [bars, setBars] = useState([])
+    const [barId, setBarId] = useState('')
+    const [rows, setRows] = useState([])
+    const [qty, setQty] = useState({})
+    const [q, setQ] = useState('')
+    const [onlyBelow, setOnlyBelow] = useState(true)
+    const [notes, setNotes] = useState('')
+    const [busy, setBusy] = useState(false)
+    useEffect(() => {
+      sb.from('locations').select('*').eq('kind','bar').order('name').then(({ data }) => {
+        setBars(data || [])
+        if (data?.length) setBarId(String(data[0].id))
+      })
+    }, [])
+    useEffect(() => {
+      if (!barId) return
+      sb.from('v_ordering_suggestions').select('*').eq('location_id', Number(barId)).order('product_name').then(({ data }) => {
+        setRows(data || [])
+        const d = {}
+        ;(data||[]).forEach(r => { if (r.suggested_qty > 0) d[r.product_id] = r.suggested_qty })
+        setQty(d)
+      })
+    }, [barId])
+    const filtered = useMemo(() => {
+      let list = rows
+      if (onlyBelow) list = list.filter(r => r.below_par)
+      if (q) list = list.filter(r => r.product_name.toLowerCase().includes(q.toLowerCase()))
+      return list
+    }, [rows, q, onlyBelow])
+    const lineCount = Object.values(qty).filter(v => Number(v) > 0).length
+    const totalQty = Object.values(qty).reduce((a,b) => a + (Number(b)||0), 0)
+    function bump(pid, d) { setQty({ ...qty, [pid]: Math.max(0, Number(qty[pid]||0)+d) }) }
+    async function submit() {
+      const lines = Object.entries(qty).filter(([,v]) => Number(v) > 0).map(([pid,v]) => ({ product_id: Number(pid), qty_requested: Number(v) }))
+      if (lines.length === 0) return toast('Enter at least one quantity', true)
+      setBusy(true)
+      const { data: order, error } = await sb.from('orders').insert({
+        bar_id: Number(barId), status: 'pending',
+        requested_by: session.user.id, requested_by_email: session.user.email, notes
+      }).select().single()
+      if (error) { setBusy(false); return toast(error.message, true) }
+      const payload = lines.map(l => {
+        const r = rows.find(x => x.product_id === l.product_id)
+        return { order_id: order.id, product_id: l.product_id, qty_requested: l.qty_requested,
+                 par_at_time: r?.par_qty ?? null, on_hand_at_time: r?.on_hand ?? null }
+      })
+      const { error: e2 } = await sb.from('order_lines').insert(payload)
+      setBusy(false)
+      if (e2) return toast(e2.message, true)
+      toast('Order submitted · ' + lines.length + ' items')
+      setNotes('')
+      const d = {}
+      rows.forEach(r => { if (r.suggested_qty > 0) d[r.product_id] = r.suggested_qty })
+      setQty(d)
+    }
+    return html`
+      <div class="card">
+        <div class="row">
+          <div><label>Bar</label>
+            <select value=${barId} onInput=${e => setBarId(e.target.value)}>
+              ${bars.map(l => html`<option key=${l.id} value=${l.id}>${l.name}</option>`)}
+            </select></div>
+          <div><label>Search</label>
+            <input value=${q} onInput=${e => setQ(e.target.value)} placeholder="Type to filter" /></div>
+          <div><label>Show</label>
+            <select value=${onlyBelow?'below':'all'} onInput=${e => setOnlyBelow(e.target.value==='below')}>
+              <option value="below">Below par only</option>
+              <option value="all">All products</option>
+            </select></div>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Product</th><th class="num">On hand</th><th class="num">Par</th><th class="num">Suggested</th><th>Order qty</th></tr></thead>
+            <tbody>
+              ${filtered.map(r => html`
+                <tr key=${r.product_id}>
+                  <td>${r.product_name}<div class="mut" style=${{fontSize:'11px'}}>${r.category || ''}</div></td>
+                  <td class="num">${NUM(r.on_hand)}</td>
+                  <td class="num">${NUM(r.par_qty)}</td>
+                  <td class="num"><span class="pill ${r.below_par?'p-warn':'p-info'}">${NUM(r.suggested_qty)}</span></td>
+                  <td>
+                    <div class="flexrow">
+                      <button class="btn-icon" onClick=${() => bump(r.product_id, -1)}>-</button>
+                      <input type="number" min="0" style=${{maxWidth:'80px',textAlign:'right'}} value=${qty[r.product_id] ?? ''} onInput=${e => setQty({...qty,[r.product_id]:e.target.value})} />
+                      <button class="btn-icon" onClick=${() => bump(r.product_id, +1)}>+</button>
+                      <button class="btn-icon" onClick=${() => bump(r.product_id, +6)}>+6</button>
+                    </div>
+                  </td>
+                </tr>`)}
+              ${filtered.length===0 && html`<tr><td colSpan="5" class="mut" style=${{textAlign:'center',padding:'20px'}}>No products match</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div class="pill-row">
+          <input placeholder="Optional note" value=${notes} onInput=${e => setNotes(e.target.value)} style=${{flex:'1',minWidth:'200px'}} />
+          <div class="mut">${lineCount} lines · ${NUM(totalQty)} units</div>
+          <button class="primary" disabled=${busy || lineCount===0} onClick=${submit}>
+            ${busy?'Submitting…':'Submit order (' + lineCount + ')'}
+          </button>
+        </div>
+      </div>
+    `
+  }
+
+  function OrdersQueue({ toast }) {
+    const [orders, setOrders] = useState([])
+    const [expanded, setExpanded] = useState(null)
+    const [lines, setLines] = useState({})
+    const [busy, setBusy] = useState(false)
+    const [filter, setFilter] = useState('pending')
+    async function load() {
+      let q = sb.from('orders').select('*, locations:bar_id(name)').order('created_at',{ascending:false}).limit(60)
+      if (filter !== 'all') q = q.eq('status', filter)
+      const { data } = await q
+      setOrders(data || [])
+    }
+    useEffect(() => { load() }, [filter])
+    async function toggle(o) {
+      if (expanded === o.id) { setExpanded(null); return }
+      setExpanded(o.id)
+      if (!lines[o.id]) {
+        const { data } = await sb.from('order_lines').select('*, products(name)').eq('order_id', o.id)
+        setLines(p => ({ ...p, [o.id]: data || [] }))
+      }
+    }
+    async function issue(o) {
+      setBusy(true)
+      const { error } = await sb.rpc('fn_issue_order', { p_order_id: o.id })
+      setBusy(false)
+      if (error) return toast(error.message, true)
+      toast('Stock issued'); setExpanded(null); load()
+    }
+    async function reject(o) {
+      const note = prompt('Reason?') || null
+      const { error } = await sb.from('orders').update({ status: 'rejected', storekeeper_note: note }).eq('id', o.id)
+      if (error) return toast(error.message, true)
+      toast('Rejected'); load()
+    }
+    return html`
+      <div class="card">
+        <div class="flexrow" style=${{marginBottom:'12px'}}>
+          <select style=${{maxWidth:'200px'}} value=${filter} onInput=${e => setFilter(e.target.value)}>
+            <option value="pending">Pending</option>
+            <option value="issued">Issued</option>
+            <option value="rejected">Rejected</option>
+            <option value="all">All</option>
+          </select>
+          <button onClick=${load}>Refresh</button>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th></th><th>Date</th><th>Bar</th><th>By</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${orders.map(o => html`
+                <${Fragment} key=${o.id}>
+                  <tr style=${{cursor:'pointer'}} onClick=${() => toggle(o)}>
+                    <td>${expanded===o.id?'v':'>'}</td>
+                    <td>${o.order_date}</td>
+                    <td>${o.locations?.name || '—'}</td>
+                    <td class="mut">${(o.requested_by_email||'').split('@')[0]}</td>
+                    <td><span class="pill ${o.status==='issued'?'p-good':o.status==='pending'?'p-warn':'p-bad'}">${o.status}</span></td>
+                    <td style=${{textAlign:'right'}}>
+                      ${(o.status==='pending'||o.status==='approved') && html`
+                        <button class="primary" style=${{padding:'5px 10px',fontSize:'12px'}} disabled=${busy} onClick=${e=>{e.stopPropagation();issue(o)}}>Issue</button>
+                        <button style=${{padding:'5px 10px',fontSize:'12px',marginLeft:'6px'}} onClick=${e=>{e.stopPropagation();reject(o)}}>Reject</button>`}
+                    </td>
+                  </tr>
+                  ${expanded===o.id && html`
+                    <tr><td colSpan="6" style=${{background:'#0c1524',padding:0}}>
+                      <table style=${{margin:'8px'}}>
+                        <thead><tr><th>Product</th><th class="num">Par</th><th class="num">On hand</th><th class="num">Requested</th></tr></thead>
+                        <tbody>
+                          ${(lines[o.id]||[]).map(l => html`
+                            <tr key=${l.id}>
+                              <td>${l.products?.name}</td>
+                              <td class="num">${NUM(l.par_at_time)}</td>
+                              <td class="num">${NUM(l.on_hand_at_time)}</td>
+                              <td class="num">${NUM(l.qty_requested)}</td>
+                            </tr>`)}
+                        </tbody>
+                      </table>
+                      ${o.notes && html`<div class="mut" style=${{padding:'8px'}}>Note: ${o.notes}</div>`}
+                    </td></tr>`}
+                <//>`)}
+              ${orders.length===0 && html`<tr><td colSpan="6" class="mut" style=${{textAlign:'center',padding:'24px'}}>No orders</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `
+  }
+
+  function CountPage({ session, toast }) {
+    const [bars, setBars] = useState([])
+    const [barId, setBarId] = useState('')
+    const [countDate, setCountDate] = useState(today())
+    const [rows, setRows] = useState([])
+    const [counts, setCounts] = useState({})
+    const [loading, setLoading] = useState(false)
+    const [busy, setBusy] = useState(false)
+    const [q, setQ] = useState('')
+
+    useEffect(() => {
+      sb.from('locations').select('*').eq('kind','bar').order('name').then(({ data }) => {
+        setBars(data || [])
+        if (data?.length) setBarId(String(data[0].id))
+      })
+    }, [])
+
+    async function load() {
+      if (!barId || !countDate) return
+      setLoading(true)
+      const [prodsRes, stockRes, existingRes] = await Promise.all([
+        sb.from('products').select('id,name,unit,unit_cost').eq('active', true).order('name'),
+        sb.from('stock_on_hand').select('product_id,qty').eq('location_id', Number(barId)),
+        sb.from('inventory_counts').select('product_id,counted_qty').eq('location_id', Number(barId)).eq('count_date', countDate)
+      ])
+      const stockMap = {}
+      ;(stockRes.data || []).forEach(s => { stockMap[s.product_id] = s.qty })
+      const existingMap = {}
+      ;(existingRes.data || []).forEach(c => { existingMap[c.product_id] = c.counted_qty })
+
+      const list = (prodsRes.data || []).map(p => ({
+        ...p,
+        system_qty: stockMap[p.id] || 0,
+        existing_qty: existingMap[p.id]
+      }))
+      setRows(list)
+
+      const initial = {}
+      list.forEach(r => { if (r.existing_qty != null) initial[r.id] = r.existing_qty })
+      setCounts(initial)
+      setLoading(false)
+    }
+    useEffect(() => { load() }, [barId, countDate])
+
+    function setCount(pid, v) { setCounts({ ...counts, [pid]: v }) }
+
+    async function save() {
+      const entries = Object.entries(counts).filter(([,v]) => v !== '' && v != null)
+      if (entries.length === 0) return toast('Enter at least one count', true)
+      const payload = entries.map(([pid, qty]) => {
+        const r = rows.find(x => x.id === Number(pid))
+        return {
+          count_date: countDate,
+          location_id: Number(barId),
+          product_id: Number(pid),
+          system_qty: r?.system_qty || 0,
+          counted_qty: Number(qty) || 0,
+          unit_cost: r?.unit_cost || 0,
+          counted_by: session.user.id,
+          counted_by_email: session.user.email
+        }
+      })
+      setBusy(true)
+      const { error } = await sb.from('inventory_counts').upsert(payload, { onConflict: 'count_date,location_id,product_id' })
+      setBusy(false)
+      if (error) return toast(error.message, true)
+      const total = payload.reduce((a,b) => a + b.counted_qty * b.unit_cost, 0)
+      toast('Saved ' + payload.length + ' counts · ' + KYD(total))
+    }
+
+    const filtered = q ? rows.filter(r => r.name.toLowerCase().includes(q.toLowerCase())) : rows
+    const totalValue = Object.entries(counts)
+      .filter(([,v]) => v !== '' && v != null)
+      .reduce((a, [pid, qty]) => {
+        const r = rows.find(x => x.id === Number(pid))
+        return a + (Number(qty) || 0) * (r?.unit_cost || 0)
+      }, 0)
+
+    return html`
+      <div class="card">
+        <div class="row">
+          <div><label>Bar</label>
+            <select value=${barId} onInput=${e => setBarId(e.target.value)}>
+              ${bars.map(l => html`<option key=${l.id} value=${l.id}>${l.name}</option>`)}
+            </select></div>
+          <div><label>Count date</label>
+            <input type="date" value=${countDate} onInput=${e => setCountDate(e.target.value)} /></div>
+          <div><label>Search</label>
+            <input value=${q} onInput=${e => setQ(e.target.value)} placeholder="Filter products" /></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="flexrow" style=${{marginBottom:'12px'}}>
+          <h2 style=${{margin:0,fontSize:'14px',textTransform:'uppercase',letterSpacing:'.5px',color:'#8ea2c0'}}>
+            Count sheet · ${bars.find(b => String(b.id)===barId)?.name || ''}
+          </h2>
+          <div class="flex-spacer"></div>
+          <div class="totals">${KYD(totalValue)}</div>
+        </div>
+        ${loading && html`<div class="mut" style=${{padding:'20px',textAlign:'center'}}>Loading…</div>`}
+        ${!loading && html`
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th class="num">System</th>
+                  <th class="num">Cost</th>
+                  <th style=${{width:'120px'}}>Count</th>
+                  <th class="num">Variance</th>
+                  <th class="num">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filtered.map(r => {
+                  const counted = counts[r.id]
+                  const hasCount = counted !== '' && counted != null
+                  const variance = hasCount ? Number(counted) - r.system_qty : null
+                  const value = hasCount ? Number(counted) * (r.unit_cost || 0) : 0
+                  const rowStyle = r.existing_qty != null ? {background:'#3ddc9708'} : {}
+                  return html`
+                    <tr key=${r.id} style=${rowStyle}>
+                      <td>${r.name}<div class="mut" style=${{fontSize:'11px'}}>${r.unit || ''}</div></td>
+                      <td class="num mut">${NUM(r.system_qty)}</td>
+                      <td class="num mut">${KYD(r.unit_cost)}</td>
+                      <td>
+                        <input type="number" step="0.01" min="0" value=${counts[r.id] ?? ''} 
+                               placeholder="0"
+                               onInput=${e => setCount(r.id, e.target.value)}
+                               style=${{textAlign:'right'}} />
+                      </td>
+                      <td class="num" style=${{color: variance != null && variance < 0 ? '#ff5c5c' : variance > 0 ? '#3ddc97' : '#8ea2c0'}}>
+                        ${variance == null ? '—' : (variance > 0 ? '+' : '') + NUM(variance)}
+                      </td>
+                      <td class="num">${KYD(value)}</td>
+                    </tr>`
+                })}
+                ${filtered.length === 0 && html`<tr><td colSpan="6" class="mut" style=${{textAlign:'center',padding:'20px'}}>No products</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+          <div class="pill-row">
+            <div class="mut">Enter counts for the products you actually have on the shelf.</div>
+            <div class="flex-spacer"></div>
+            <button class="primary" disabled=${busy} onClick=${save}>
+              ${busy ? 'Saving…' : 'Save count'}
+            </button>
+          </div>
+        `}
+      </div>
+    `
+  }
+
+  function CountHistory({ toast }) {
+    const [rows, setRows] = useState([])
+    const [loading, setLoading] = useState(false)
+    const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate()-90); return d.toISOString().slice(0,10) })
+    const [to, setTo] = useState(today())
+    const [detail, setDetail] = useState(null)
+
+    async function load() {
+      setLoading(true)
+      const { data } = await sb.from('inventory_counts')
+        .select('count_date, location_id, counted_qty, unit_cost, counted_by_email, locations(name)')
+        .gte('count_date', from).lte('count_date', to)
+      setLoading(false)
+      const groups = {}
+      ;(data || []).forEach(r => {
+        const key = r.count_date + '|' + r.location_id
+        if (!groups[key]) groups[key] = {
+          count_date: r.count_date,
+          location_id: r.location_id,
+          bar_name: r.locations?.name || '—',
+          total_value: 0, items: 0,
+          counted_by_email: r.counted_by_email
+        }
+        groups[key].total_value += (Number(r.counted_qty)||0) * (Number(r.unit_cost)||0)
+        groups[key].items += 1
+      })
+      setRows(Object.values(groups).sort((a,b) => b.count_date.localeCompare(a.count_date)))
+    }
+    useEffect(() => { load() }, [from, to])
+
+    async function openDetail(row) {
+      const { data } = await sb.from('inventory_counts')
+        .select('*, products(name, unit)')
+        .eq('count_date', row.count_date)
+        .eq('location_id', row.location_id)
+        .order('id')
+      setDetail({ ...row, lines: data || [] })
+    }
+
+    return html`
+      <div class="card">
+        <div class="flexrow" style=${{marginBottom:'12px'}}>
+          <input type="date" value=${from} onInput=${e => setFrom(e.target.value)} />
+          <input type="date" value=${to} onInput=${e => setTo(e.target.value)} />
+          <button onClick=${load}>Refresh</button>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Date</th><th>Bar</th><th class="num">Items</th><th class="num">Total value</th><th>Counted by</th><th></th></tr></thead>
+            <tbody>
+              ${rows.map((r, i) => html`
+                <tr key=${i}>
+                  <td>${r.count_date}</td>
+                  <td>${r.bar_name}</td>
+                  <td class="num">${r.items}</td>
+                  <td class="num">${KYD(r.total_value)}</td>
+                  <td class="mut">${(r.counted_by_email||'').split('@')[0]}</td>
+                  <td style=${{textAlign:'right'}}><button class="btn-icon" onClick=${() => openDetail(r)}>View</button></td>
+                </tr>`)}
+              ${rows.length===0 && !loading && html`<tr><td colSpan="6" class="mut" style=${{textAlign:'center',padding:'20px'}}>No counts in range</td></tr>`}
+              ${loading && html`<tr><td colSpan="6" class="mut" style=${{textAlign:'center',padding:'20px'}}>Loading…</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      ${detail && html`
+        <div class="overlay" onClick=${e => e.target.className === 'overlay' && setDetail(null)}>
+          <div class="modal" style=${{maxWidth:'720px',maxHeight:'90vh',overflow:'auto'}}>
+            <h2 style=${{margin:'0 0 4px'}}>${detail.bar_name} · ${detail.count_date}</h2>
+            <div class="sub" style=${{marginBottom:'14px'}}>${detail.lines.length} items · ${KYD(detail.total_value)}</div>
+            <div class="scroll" style=${{maxHeight:'400px'}}>
+              <table>
+                <thead><tr><th>Product</th><th class="num">System</th><th class="num">Counted</th><th class="num">Variance</th><th class="num">Value</th></tr></thead>
+                <tbody>
+                  ${detail.lines.map(l => {
+                    const v = Number(l.counted_qty) - Number(l.system_qty)
+                    const varStyle = {color: v<0?'#ff5c5c':v>0?'#3ddc97':'#8ea2c0'}
+                    return html`
+                      <tr key=${l.id}>
+                        <td>${l.products?.name}</td>
+                        <td class="num mut">${NUM(l.system_qty)}</td>
+                        <td class="num">${NUM(l.counted_qty)}</td>
+                        <td class="num" style=${varStyle}>${(v>0?'+':'') + NUM(v)}</td>
+                        <td class="num">${KYD(Number(l.counted_qty) * Number(l.unit_cost))}</td>
+                      </tr>`
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style=${{marginTop:'14px',textAlign:'right'}}>
+              <button onClick=${() => setDetail(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      `}
+    `
+  }
+
+  function InvoiceUpload({ session, toast }) {
+    const [bars, setBars] = useState([])
+    const [products, setProducts] = useState([])
+    const [head, setHead] = useState({ purchase_date: today(), bar_id: '', supplier_name: '', invoice_no: '', notes: '' })
+    const [lines, setLines] = useState([{ product_id: '', qty_received: '', unit_cost: '' }])
+    const [file, setFile] = useState(null)
+    const [busy, setBusy] = useState(false)
+    useEffect(() => {
+      Promise.all([
+        sb.from('locations').select('*').eq('kind','bar').order('name'),
+        sb.from('products').select('id,name,unit').eq('active',true).order('name')
+      ]).then(([b,p]) => {
+        setBars(b.data||[]); setProducts(p.data||[])
+        if (b.data?.length) setHead(h => ({...h, bar_id: String(b.data[0].id)}))
+      })
+    }, [])
+    const total = lines.reduce((a,l) => a + (Number(l.qty_received)||0)*(Number(l.unit_cost)||0), 0)
+    async function submit(e) {
+      e.preventDefault()
+      const good = lines.filter(l => l.product_id && Number(l.qty_received) > 0)
+      if (!head.bar_id || good.length === 0) return toast('Fill bar and add at least one line', true)
+      setBusy(true)
+      let photo_url = null
+      if (file) {
+        const path = head.bar_id + '/' + Date.now() + '-' + file.name.replace(/[^a-z0-9.]/gi,'_')
+        const { error: upErr } = await sb.storage.from('invoices').upload(path, file)
+        if (upErr) { setBusy(false); return toast('Upload failed: ' + upErr.message, true) }
+        const { data: pub } = sb.storage.from('invoices').getPublicUrl(path)
+        photo_url = pub.publicUrl
+      }
+      const { data: purchase, error } = await sb.from('purchases').insert({
+        purchase_date: head.purchase_date, bar_id: Number(head.bar_id),
+        supplier_name: head.supplier_name, invoice_no: head.invoice_no,
+        invoice_photo_url: photo_url, total_kyd: total, notes: head.notes,
+        uploaded_by: session.user.id, uploaded_by_email: session.user.email
+      }).select().single()
+      if (error) { setBusy(false); return toast(error.message, true) }
+      const { error: e2 } = await sb.from('purchase_lines').insert(
+        good.map(l => ({ purchase_id: purchase.id, product_id: Number(l.product_id), qty_received: Number(l.qty_received), unit_cost: Number(l.unit_cost)||0 }))
+      )
+      setBusy(false)
+      if (e2) return toast(e2.message, true)
+      toast('Purchase saved: KY$' + total.toFixed(2))
+      setHead({...head, supplier_name:'', invoice_no:'', notes:''})
+      setLines([{ product_id:'', qty_received:'', unit_cost:'' }])
+      setFile(null)
+      e.target.reset()
+    }
+    return html`
+      <div class="card">
+        <h2>Record purchase / upload invoice</h2>
+        <form onSubmit=${submit}>
+          <div class="row">
+            <div><label>Date</label><input type="date" value=${head.purchase_date} onInput=${e=>setHead({...head,purchase_date:e.target.value})} /></div>
+            <div><label>Bar</label><select value=${head.bar_id} onInput=${e=>setHead({...head,bar_id:e.target.value})}>
+              ${bars.map(b => html`<option key=${b.id} value=${b.id}>${b.name}</option>`)}
+            </select></div>
+            <div><label>Supplier</label><input value=${head.supplier_name} onInput=${e=>setHead({...head,supplier_name:e.target.value})} /></div>
+          </div>
+          <div class="row">
+            <div><label>Invoice #</label><input value=${head.invoice_no} onInput=${e=>setHead({...head,invoice_no:e.target.value})} /></div>
+            <div><label>Notes</label><input value=${head.notes} onInput=${e=>setHead({...head,notes:e.target.value})} /></div>
+            <div><label>Photo</label><input type="file" accept="image/*" onChange=${e=>setFile(e.target.files?.[0]||null)} /></div>
+          </div>
+          <label style=${{marginTop:'12px'}}>Lines</label>
+          ${lines.map((l,i) => html`
+            <div class="invoice-line" key=${i}>
+              <select value=${l.product_id} onInput=${e => { const c=[...lines]; c[i].product_id=e.target.value; setLines(c) }}>
+                <option value="">-- product --</option>
+                ${products.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
+              </select>
+              <input type="number" step="0.01" placeholder="Qty" value=${l.qty_received} onInput=${e => { const c=[...lines]; c[i].qty_received=e.target.value; setLines(c) }} />
+              <input type="number" step="0.01" placeholder="Unit KY$" value=${l.unit_cost} onInput=${e => { const c=[...lines]; c[i].unit_cost=e.target.value; setLines(c) }} />
+              <button type="button" onClick=${() => setLines(lines.filter((_,j)=>j!==i))}>x</button>
+            </div>`)}
+          <button type="button" onClick=${() => setLines([...lines,{product_id:'',qty_received:'',unit_cost:''}])}>+ Add line</button>
+          <div class="pill-row">
+            <div class="totals">KY$${total.toFixed(2)}</div>
+            <div class="flex-spacer"></div>
+            <button class="primary" disabled=${busy}>${busy?'Saving…':'Save purchase'}</button>
+          </div>
+        </form>
+      </div>
+    `
+  }
+
+  function ParLevels({ toast }) {
+    const [bars, setBars] = useState([])
+    const [products, setProducts] = useState([])
+    const [parMap, setParMap] = useState({})
+    const [dirty, setDirty] = useState({})
+    const [busy, setBusy] = useState(false)
+    const [q, setQ] = useState('')
+    async function load() {
+      const [b,p,pl] = await Promise.all([
+        sb.from('locations').select('*').eq('kind','bar').order('name'),
+        sb.from('products').select('id,name,unit').eq('active',true).order('name'),
+        sb.from('par_levels').select('*')
+      ])
+      setBars(b.data||[]); setProducts(p.data||[])
+      const m = {}
+      ;(pl.data||[]).forEach(r => { m[r.product_id + '|' + r.location_id] = r.par_qty })
+      setParMap(m); setDirty({})
+    }
+    useEffect(() => { load() }, [])
+    function setVal(pid, lid, v) {
+      const k = pid + '|' + lid
+      setParMap({...parMap, [k]: v}); setDirty({...dirty, [k]: true})
+    }
+    async function save() {
+      const updates = Object.keys(dirty).map(k => {
+        const parts = k.split('|')
+        return { product_id: Number(parts[0]), location_id: Number(parts[1]), par_qty: Number(parMap[k])||0 }
+      })
+      if (updates.length === 0) return toast('No changes')
+      setBusy(true)
+      const { error } = await sb.from('par_levels').upsert(updates, { onConflict: 'product_id,location_id' })
+      setBusy(false)
+      if (error) return toast(error.message, true)
+      toast('Saved ' + updates.length + ' changes')
+      setDirty({})
+    }
+    const filtered = q ? products.filter(p => p.name.toLowerCase().includes(q.toLowerCase())) : products
+    return html`
+      <div class="card">
+        <div class="flexrow" style=${{marginBottom:'12px'}}>
+          <input style=${{maxWidth:'240px'}} placeholder="Search products" value=${q} onInput=${e=>setQ(e.target.value)} />
+          <div class="flex-spacer"></div>
+          <button class="primary" onClick=${save} disabled=${busy||Object.keys(dirty).length===0}>
+            ${busy?'Saving…':'Save (' + Object.keys(dirty).length + ')'}
+          </button>
+        </div>
+        <div class="scroll" style=${{maxHeight:'600px'}}>
+          <table>
+            <thead><tr><th>Product</th>${bars.map(b => html`<th key=${b.id} class="num">${b.name}</th>`)}</tr></thead>
+            <tbody>
+              ${filtered.map(p => html`
+                <tr key=${p.id}>
+                  <td>${p.name}<div class="mut" style=${{fontSize:'11px'}}>${p.unit}</div></td>
+                  ${bars.map(b => {
+                    const k = p.id + '|' + b.id
+                    return html`<td key=${b.id} class="num">
+                      <input type="number" min="0" style=${{maxWidth:'80px',textAlign:'right'}} value=${parMap[k] ?? ''} onInput=${e => setVal(p.id,b.id,e.target.value)} />
+                    </td>`
+                  })}
+                </tr>`)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `
+  }
+
+  function OrderHistory() {
+    const [rows, setRows] = useState([])
+    const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate()-30); return d.toISOString().slice(0,10) })
+    const [to, setTo] = useState(today())
+    useEffect(() => {
+      sb.from('orders').select('*, locations:bar_id(name), order_lines(qty_requested,qty_issued,products(name))')
+        .gte('order_date', from).lte('order_date', to).order('order_date',{ascending:false})
+        .then(({ data }) => setRows(data||[]))
+    }, [from, to])
+    return html`
+      <div class="card">
+        <div class="flexrow" style=${{marginBottom:'12px'}}>
+          <input type="date" value=${from} onInput=${e=>setFrom(e.target.value)} />
+          <input type="date" value=${to} onInput=${e=>setTo(e.target.value)} />
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Date</th><th>Bar</th><th>Status</th><th class="num">Lines</th><th class="num">Total qty</th></tr></thead>
+            <tbody>
+              ${rows.map(o => {
+                const ls = o.order_lines || []
+                const total = ls.reduce((a,b) => a + Number(b.qty_requested||0), 0)
+                return html`
+                  <tr key=${o.id}>
+                    <td>${o.order_date}</td>
+                    <td>${o.locations?.name || '—'}</td>
+                    <td><span class="pill ${o.status==='issued'?'p-good':o.status==='pending'?'p-warn':'p-bad'}">${o.status}</span></td>
+                    <td class="num">${ls.length}</td>
+                    <td class="num">${NUM(total)}</td>
+                  </tr>`
+              })}
+              ${rows.length===0 && html`<tr><td colSpan="5" class="mut" style=${{textAlign:'center',padding:'20px'}}>No orders in range</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `
+  }
+
+  try {
+    createRoot(document.getElementById('root')).render(html`<${App} />`)
+  } catch (e) {
+    document.getElementById('root').innerHTML =
+      '<pre style="color:#ff5c5c;padding:20px;white-space:pre-wrap">Render error:\n' + e.message + '\n\n' + e.stack + '</pre>'
+  }
+}
