@@ -524,7 +524,7 @@ function boot() {
                   const variance = hasCount ? Number(counted) - r.system_qty : null
                   const value = hasCount ? Number(counted) * (r.unit_cost || 0) : 0
                   return html`
-                    <tr key=${r.id} style=${r.existing_qty != null ? 'background:#3ddc9708' : ''}>
+                  <tr key=${r.id} style=${r.existing_qty != null ? {background:'#3ddc9708'} : {}}>
                       <td>${r.name}<div class="mut" style=${{fontSize:'11px'}}>${r.unit || ''}</div></td>
                       <td class="num mut">${NUM(r.system_qty)}</td>
                       <td class="num mut">${KYD(r.unit_cost)}</td>
