@@ -523,8 +523,9 @@ function boot() {
                   const hasCount = counted !== '' && counted != null
                   const variance = hasCount ? Number(counted) - r.system_qty : null
                   const value = hasCount ? Number(counted) * (r.unit_cost || 0) : 0
+                  const rowStyle = r.existing_qty != null ? {background:'#3ddc9708'} : {}
                   return html`
-                  <tr key=${r.id} style=${r.existing_qty != null ? {background:'#3ddc9708'} : {}}>
+                    <tr key=${r.id} style=${rowStyle}>
                       <td>${r.name}<div class="mut" style=${{fontSize:'11px'}}>${r.unit || ''}</div></td>
                       <td class="num mut">${NUM(r.system_qty)}</td>
                       <td class="num mut">${KYD(r.unit_cost)}</td>
@@ -632,12 +633,13 @@ function boot() {
                 <tbody>
                   ${detail.lines.map(l => {
                     const v = Number(l.counted_qty) - Number(l.system_qty)
+                    const varStyle = {color: v<0?'#ff5c5c':v>0?'#3ddc97':'#8ea2c0'}
                     return html`
                       <tr key=${l.id}>
                         <td>${l.products?.name}</td>
                         <td class="num mut">${NUM(l.system_qty)}</td>
                         <td class="num">${NUM(l.counted_qty)}</td>
-                        <td class="num" style=${{color: v<0?'#ff5c5c':v>0?'#3ddc97':'#8ea2c0'}}>${(v>0?'+':'') + NUM(v)}</td>
+                        <td class="num" style=${varStyle}>${(v>0?'+':'') + NUM(v)}</td>
                         <td class="num">${KYD(Number(l.counted_qty) * Number(l.unit_cost))}</td>
                       </tr>`
                   })}
