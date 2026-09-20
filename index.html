@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Morritt's Bar Control</title>
+<title>Morritt's Bar Control</title><link rel="manifest" href="/morritts_bar/manifest.json">
+<meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bar Control">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="https://cdn.jsdelivr.net/gh/Morrittsbar/morritts_bar@main/icon-192.png">
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0b1220;color:#e6edf7;min-height:100vh}
@@ -853,7 +858,13 @@ function boot() {
     document.getElementById('root').innerHTML =
       '<pre style="color:#ff5c5c;padding:20px;white-space:pre-wrap">Render error:\n' + e.message + '\n\n' + e.stack + '</pre>'
   }
+}<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/morritts_bar/sw.js').catch(() => {});
+  });
 }
+
 </script>
 </body>
 </html>
