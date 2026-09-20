@@ -3,12 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Morritt's Bar Control</title><link rel="manifest" href="/morritts_bar/manifest.json">
-<meta name="theme-color" content="#0b1220">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Bar Control">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" href="https://cdn.jsdelivr.net/gh/Morrittsbar/morritts_bar@main/icon-192.png">
+<title>Morritt's Bar Control</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0b1220;color:#e6edf7;min-height:100vh}
@@ -57,6 +52,29 @@ td{padding:8px;border-bottom:1px solid #22304a55}
 </head>
 <body>
 <div id="root"><div class="loading">Loading Bar Control…</div></div>
+<div id="err" style="display:none;padding:24px;background:#0b1220;color:#ff5c5c;font-family:monospace;font-size:13px;white-space:pre-wrap;position:fixed;inset:0;z-index:99999;overflow:auto"></div>
+<script>
+window.addEventListener('error', function(ev){
+  var el = document.getElementById('err');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = 'ERROR: ' + ev.message + '\n\nFile: ' + ev.filename + '\nLine: ' + ev.lineno + ':' + ev.colno + '\n\n' + (ev.error && ev.error.stack || '');
+});
+window.addEventListener('unhandledrejection', function(ev){
+  var el = document.getElementById('err');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = 'PROMISE REJECTION:\n' + (ev.reason && ev.reason.message || ev.reason) + '\n\n' + (ev.reason && ev.reason.stack || '');
+});
+setTimeout(function(){
+  var root = document.getElementById('root');
+  if (root && (root.textContent || '').indexOf('Loading') !== -1) {
+    var el = document.getElementById('err');
+    el.style.display = 'block';
+    el.textContent = 'App did not start after 10 seconds.\n\nThis usually means the CDN (cdn.jsdelivr.net) is blocked on your network.\n\nTry:\n1. Open in incognito mode\n2. Switch to mobile data\n3. Try a different browser\n\nURL: ' + location.href;
+  }
+}, 10000);
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
@@ -64,13 +82,18 @@ td{padding:8px;border-bottom:1px solid #22304a55}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 
 <script>
-(function checkReady() {
+(function checkReady(){
   if (typeof React === 'undefined' || typeof ReactDOM === 'undefined' || typeof htm === 'undefined' || typeof supabase === 'undefined') {
-    setTimeout(checkReady, 100)
-    return
+    setTimeout(checkReady, 100);
+    return;
   }
-  boot()
-})()
+  try { boot(); }
+  catch (e) {
+    var el = document.getElementById('err');
+    el.style.display = 'block';
+    el.textContent = 'BOOT ERROR:\n' + e.message + '\n\n' + e.stack;
+  }
+})();
 
 function boot() {
   const html = htm.bind(React.createElement)
@@ -450,9 +473,7 @@ function boot() {
     }
     useEffect(() => { load() }, [barId, countDate])
 
-    function setCount(pid, v) {
-      setCounts({ ...counts, [pid]: v })
-    }
+    function setCount(pid, v) { setCounts({ ...counts, [pid]: v }) }
 
     async function save() {
       const entries = Object.entries(counts).filter(([,v]) => v !== '' && v != null)
@@ -858,13 +879,7 @@ function boot() {
     document.getElementById('root').innerHTML =
       '<pre style="color:#ff5c5c;padding:20px;white-space:pre-wrap">Render error:\n' + e.message + '\n\n' + e.stack + '</pre>'
   }
-}<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/morritts_bar/sw.js').catch(() => {});
-  });
 }
-
 </script>
 </body>
 </html>
