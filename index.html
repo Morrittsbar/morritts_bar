@@ -43,21 +43,21 @@ td{padding:8px;border-bottom:1px solid #22304a55}
 .loading{padding:30px;text-align:center;color:#8ea2c0;font-size:14px}
 .g3{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:14px}
 .flexrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.flexrow-between{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-.btn-icon{padding:4px 8px}
+.flex-spacer{flex:1}
 .header-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .title-block{display:block}
-.flex-spacer{flex:1}
 .invoice-line{display:grid;grid-template-columns:2fr 1fr 1fr 40px;gap:8px;margin-bottom:8px}
 .pill-row{margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .totals{font-size:22px;font-weight:800}
 .textarea-mono{font-family:monospace;font-size:13px}
+.btn-icon{padding:4px 8px}
 </style>
 </head>
 <body>
 <div id="root"><div class="loading">Loading Bar Control…</div></div>
 
 <script type="module">
+// === Library loading ===
 let React, createRoot, htm, createClient
 try {
   React = (await import('https://esm.sh/react@18.3.1')).default
@@ -74,30 +74,22 @@ try {
 const html = htm.bind(React.createElement)
 const { useState, useEffect, useMemo, Fragment } = React
 
-const LS_URL = 'morritts_url'
-const LS_KEY = 'morritts_key'localStorage.setItem('morritts_url', 'https://ffitomemdjailggahcoh.supabase.co')
-localStorage.setItem('morritts_key', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmaXRvbWVtZGphaWxnZ2FoY29oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2MDkxMjksImV4cCI6MjEwNTE4NTEyOX0.m2weiT2gvXVzqAP-P17mPFP6YAajHpWzwJCVGuccqwI')
-let sb = null
+// === Supabase connection (hardcoded) ===
+const SUPABASE_URL = 'https://ffitomemdjailggahcoh.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmaXRvbWVtZGphaWxnZ2FoY29oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2MDkxMjksImV4cCI6MjEwNTE4NTEyOX0.m2weiT2gvXVzqAP-P17mPFP6YAajHpWzwJCVGuccqwI'
 
-function connect() {
-  const url = localStorage.getItem(LS_URL) || ''
-  const key = localStorage.getItem(LS_KEY) || ''
-  if (!url || !key) { sb = null; return false }
-  try {
-    sb = createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } })
-    return true
-  } catch (e) { sb = null; return false }
-}
-connect()
+let sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+})
 
 const today = () => new Date().toISOString().slice(0,10)
 const NUM = n => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US',{maximumFractionDigits:2})
 
+// === App ===
 function App() {
   const [session, setSession] = useState(null)
   const [ready, setReady] = useState(false)
   const [tab, setTab] = useState('dash')
-  const [showCfg, setShowCfg] = useState(!sb)
   const [toast, setToast] = useState(null)
 
   function toastMsg(msg, err=false) {
@@ -106,24 +98,16 @@ function App() {
   }
 
   useEffect(() => {
-    if (!sb) { setReady(true); return }
     sb.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setReady(true)
     })
     const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => sub.subscription.unsubscribe()
-  }, [showCfg])
+  }, [])
 
   if (!ready) return html`<div class="loading">Loading…</div>`
-  if (showCfg) return html`<${ConfigModal} onClose=${() => { connect(); setShowCfg(false) }} />`
-  if (!sb) return html`
-    <div class="wrap">
-      <div class="banner">Not connected. Configure Supabase to continue.</div>
-      <button class="primary" onClick=${() => setShowCfg(true)}>Configure Supabase</button>
-    </div>
-  `
-  if (!session) return html`<${Login} onSignIn=${setSession} toast=${toastMsg} onCfg=${() => setShowCfg(true)} />`
+  if (!session) return html`<${Login} onSignIn=${setSession} toast=${toastMsg} />`
 
   const isManager = (session.user.email||'').toLowerCase() === 'sbhandari@morritts.com'
   const tabs = [
@@ -139,7 +123,6 @@ function App() {
           <div class="sub">${isManager ? 'Manager' : 'Bartender'} · ${session.user.email}</div>
         </div>
         <div class="flex-spacer"></div>
-        <button onClick=${() => setShowCfg(true)}>⚙</button>
         <button onClick=${() => sb.auth.signOut()}>Sign out</button>
       </div>
       <div class="tabs">
@@ -156,41 +139,13 @@ function App() {
   `
 }
 
-function ConfigModal({ onClose }) {
-  const [url, setUrl] = useState(localStorage.getItem(LS_URL) || 'https://ffitomemdjailggahcoh.supabase.co')
-  const [key, setKey] = useState(localStorage.getItem(LS_KEY) || '')
-  function save() {
-    localStorage.setItem(LS_URL, url.trim())
-    localStorage.setItem(LS_KEY, key.trim())
-    onClose()
-  }
-  return html`
-    <div class="overlay">
-      <div class="modal">
-        <h2 style=${{margin:0}}>Supabase connection</h2>
-        <div class="sub">Paste your credentials once — saved in this browser</div>
-        <label>Project URL</label>
-        <input value=${url} onInput=${e => setUrl(e.target.value)} />
-        <div class="flex-spacer"></div>
-        <label>Anon public key</label>
-        <textarea rows="4" value=${key} onInput=${e => setKey(e.target.value)} placeholder="eyJhbGciOi..." class="textarea-mono"></textarea>
-        <div class="flexrow" style=${{marginTop:'16px'}}>
-          <button class="primary" onClick=${save}>Save</button>
-          <div class="flex-spacer"></div>
-          <button onClick=${onClose}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  `
-}
-
-function Login({ onSignIn, toast, onCfg }) {
+// === Login ===
+function Login({ onSignIn, toast }) {
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
   async function go(e) {
     e.preventDefault()
-    if (!sb) return toast('Configure Supabase first', true)
     setBusy(true)
     const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw })
     setBusy(false)
@@ -204,14 +159,14 @@ function Login({ onSignIn, toast, onCfg }) {
         <div class="sub">Sign in to continue</div>
         <form onSubmit=${go}>
           <label>Email</label>
-          <input type="email" value=${email} onInput=${e => setEmail(e.target.value)} placeholder="sbhandari@morritts.com" />
-          <div class="flex-spacer" style=${{height:'10px'}}></div>
+          <input type="email" value=${email} onInput=${e => setEmail(e.target.value)} placeholder="sbhandari@morritts.com" autoFocus />
+          <div style=${{height:'10px'}}></div>
           <label>Password</label>
-          <input type="password" value=${pw} onInput=${e => setPw(e.target.value)} />
-          <div class="flexrow" style=${{marginTop:'16px'}}>
-            <button class="primary" disabled=${busy}>${busy?'Signing in…':'Sign in'}</button>
-            <div class="flex-spacer"></div>
-            <button type="button" onClick=${onCfg}>⚙</button>
+          <input type="password" value=${pw} onInput=${e => setPw(e.target.value)} placeholder="••••••••" />
+          <div style=${{marginTop:'16px'}}>
+            <button class="primary" disabled=${busy} type="submit" style=${{width:'100%'}}>
+              ${busy?'Signing in…':'Sign in'}
+            </button>
           </div>
         </form>
       </div>
@@ -219,12 +174,12 @@ function Login({ onSignIn, toast, onCfg }) {
   `
 }
 
+// === Dashboard ===
 function Dashboard() {
   const [orders, setOrders] = useState([])
   const [sugg, setSugg] = useState([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    if (!sb) return
     Promise.all([
       sb.from('orders').select('*, locations:bar_id(name)').order('created_at',{ascending:false}).limit(15),
       sb.from('v_ordering_suggestions').select('*').eq('below_par', true).limit(50)
@@ -240,8 +195,8 @@ function Dashboard() {
     <div>
       <div class="g3">
         <div class="card"><h2>Today's orders</h2><div class="totals">${todayCount}</div></div>
-        <div class="card"><h2>Pending</h2><div class="totals p-warn">${pending}</div></div>
-        <div class="card"><h2>Below par</h2><div class="totals p-warn">${sugg.length}</div></div>
+        <div class="card"><h2>Pending</h2><div class="totals" style=${{color:'#ffb020'}}>${pending}</div></div>
+        <div class="card"><h2>Below par</h2><div class="totals" style=${{color:'#ffb020'}}>${sugg.length}</div></div>
       </div>
       <div class="card">
         <h2>Recent orders</h2>
@@ -255,7 +210,7 @@ function Dashboard() {
                   <td>${o.locations?.name || '—'}</td>
                   <td><span class="pill ${o.status==='issued'?'p-good':o.status==='pending'?'p-warn':'p-bad'}">${o.status}</span></td>
                 </tr>`)}
-              ${orders.length===0 && !loading && html`<tr><td colspan="3" class="mut" style=${{textAlign:'center',padding:'20px'}}>No orders yet</td></tr>`}
+              ${orders.length===0 && !loading && html`<tr><td colSpan="3" class="mut" style=${{textAlign:'center',padding:'20px'}}>No orders yet</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -264,6 +219,7 @@ function Dashboard() {
   `
 }
 
+// === Order Page ===
 function OrderPage({ session, toast }) {
   const [bars, setBars] = useState([])
   const [barId, setBarId] = useState('')
@@ -274,14 +230,13 @@ function OrderPage({ session, toast }) {
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    if (!sb) return
     sb.from('locations').select('*').eq('kind','bar').order('name').then(({ data }) => {
       setBars(data || [])
       if (data?.length) setBarId(String(data[0].id))
     })
   }, [])
   useEffect(() => {
-    if (!sb || !barId) return
+    if (!barId) return
     sb.from('v_ordering_suggestions').select('*').eq('location_id', Number(barId)).order('product_name').then(({ data }) => {
       setRows(data || [])
       const d = {}
@@ -359,7 +314,7 @@ function OrderPage({ session, toast }) {
                   </div>
                 </td>
               </tr>`)}
-            ${filtered.length===0 && html`<tr><td colspan="5" class="mut" style=${{textAlign:'center',padding:'20px'}}>No products match</td></tr>`}
+            ${filtered.length===0 && html`<tr><td colSpan="5" class="mut" style=${{textAlign:'center',padding:'20px'}}>No products match</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -374,6 +329,7 @@ function OrderPage({ session, toast }) {
   `
 }
 
+// === Orders Queue ===
 function OrdersQueue({ toast }) {
   const [orders, setOrders] = useState([])
   const [expanded, setExpanded] = useState(null)
@@ -381,7 +337,6 @@ function OrdersQueue({ toast }) {
   const [busy, setBusy] = useState(false)
   const [filter, setFilter] = useState('pending')
   async function load() {
-    if (!sb) return
     let q = sb.from('orders').select('*, locations:bar_id(name)').order('created_at',{ascending:false}).limit(60)
     if (filter !== 'all') q = q.eq('status', filter)
     const { data } = await q
@@ -463,6 +418,7 @@ function OrdersQueue({ toast }) {
   `
 }
 
+// === Invoice Upload ===
 function InvoiceUpload({ session, toast }) {
   const [bars, setBars] = useState([])
   const [products, setProducts] = useState([])
@@ -471,13 +427,12 @@ function InvoiceUpload({ session, toast }) {
   const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    if (!sb) return
     Promise.all([
       sb.from('locations').select('*').eq('kind','bar').order('name'),
       sb.from('products').select('id,name,unit').eq('active',true).order('name')
     ]).then(([b,p]) => {
       setBars(b.data||[]); setProducts(p.data||[])
-      if (b.data?.length && !head.bar_id) setHead(h => ({...h, bar_id: String(b.data[0].id)}))
+      if (b.data?.length) setHead(h => ({...h, bar_id: String(b.data[0].id)}))
     })
   }, [])
   const total = lines.reduce((a,l) => a + (Number(l.qty_received)||0)*(Number(l.unit_cost)||0), 0)
@@ -550,6 +505,7 @@ function InvoiceUpload({ session, toast }) {
   `
 }
 
+// === Par Levels ===
 function ParLevels({ toast }) {
   const [bars, setBars] = useState([])
   const [products, setProducts] = useState([])
@@ -558,7 +514,6 @@ function ParLevels({ toast }) {
   const [busy, setBusy] = useState(false)
   const [q, setQ] = useState('')
   async function load() {
-    if (!sb) return
     const [b,p,pl] = await Promise.all([
       sb.from('locations').select('*').eq('kind','bar').order('name'),
       sb.from('products').select('id,name,unit').eq('active',true).order('name'),
@@ -619,12 +574,12 @@ function ParLevels({ toast }) {
   `
 }
 
+// === History ===
 function OrderHistory() {
   const [rows, setRows] = useState([])
   const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate()-30); return d.toISOString().slice(0,10) })
   const [to, setTo] = useState(today())
   useEffect(() => {
-    if (!sb) return
     sb.from('orders').select('*, locations:bar_id(name), order_lines(qty_requested,qty_issued,products(name))')
       .gte('order_date', from).lte('order_date', to).order('order_date',{ascending:false})
       .then(({ data }) => setRows(data||[]))
@@ -659,6 +614,7 @@ function OrderHistory() {
   `
 }
 
+// === Mount ===
 try {
   createRoot(document.getElementById('root')).render(html`<${App} />`)
 } catch (e) {
