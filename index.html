@@ -109,7 +109,7 @@ function App() {
   if (!ready) return html`<div class="loading">Loading…</div>`
   if (!session) return html`<${Login} onSignIn=${setSession} toast=${toastMsg} />`
 
-  const isManager = (session.user.email||'').toLowerCase() === 'sbhandari@morritts.com'
+  const isManager = (session.user.email||'').toLowerCase() === 'admin@morritts.com','sbhandari@morritts.com'
   const tabs = [
     ['dash','Dashboard'],['order','Order'],['queue','Order Queue'],['invoice','Invoices'],
     ...(isManager ? [['par','Par Levels'],['history','History']] : [])
